@@ -1,46 +1,46 @@
 #include <Adafruit_LiquidCrystal.h>
 
 // Asignación de GPIO
-const int boton_1 = 3;  // Pin del primer botón
-const int boton_2 = 2;  // Pin del segundo botón
-const int generador = A0;  // Pin analógico A0
+const int boton_1 = 3;   // GPIO del primer botón
+const int boton_2 = 2;   // GPIO del segundo botón
+const int generador = A0; // GPIO del generador
 
-// Variables de estado
+// Variables
 int estado_boton_1 = 0;
 int estado_boton_2 = 0;
-float valor_generador = 0;  // Variable para almacenar el valor leído del pin analógico
-float voltaje = 0;          // Variable para almacenar el voltaje actual
-int capacidad = 10;         // Capacidad inicial del arreglo de voltajes
-int contador = 0;           // Contador para las muestras de voltaje
-float minimo = 5;           // Valor mínimo de voltaje (inicializado al máximo posible)
-float maximo = 0;           // Valor máximo de voltaje (inicializado al mínimo)
-float amplitud = 0;         // Variable para almacenar la amplitud de la señal
+int valor_A0 = 0;        		 // Variable para almacenar el voltaje
+int valorMedio = 0;              // Valor medio de la señal (mitad del rango de 10 bits)
+float amplitud = 0.0;
+float valorMinimo = 5000.0;      // Valor mínimo inicial para calibración
+float valorMaximo = -5000.0;     // Valor máximo inicial para calibración
+int tiempoCalibracion = 1000;
+
+// Frecuencia
+unsigned long tiempoInicio = 0;  // Tiempo del primer cruce por cero
+unsigned long tiempoFin = 0;     // Tiempo del segundo cruce por cero
+unsigned long periodo = 0;       // Período de la señal
+float frecuencia = 0;            // Frecuencia calculada en Hz
+bool cruceDetectado = false;     // Marca para indicar si se ha detectado un cruce
+int histeresis = 5;  
 
 // Banderas de control
-bool bandera_boton_1 = false;  // Control para iniciar la toma de datos
-bool bandera_boton_2 = false;  // Control para finalizar la toma de datos
+bool bandera_boton_1 = false;
+bool bandera_boton_2 = false;
+bool calibrado = false;          // Indica si la calibración ha finalizado
+bool captura_nueva = false;
 
-// Puntero para el arreglo de voltajes
-float* voltajes = nullptr;  // Se inicializa el puntero en nulo
-
-// Inicializa el objeto LCD con I2C (usando el bus I2C por defecto con dirección 0x20)
-Adafruit_LiquidCrystal lcd_1(0);
+Adafruit_LiquidCrystal lcd_1(0);  // Inicializa el objeto LCD
 
 void setup() {
-  // Configuración de los pines
-  pinMode(boton_1, INPUT);   // Botón 1 configurado como entrada
-  pinMode(boton_2, INPUT);   // Botón 2 configurado como entrada
-  pinMode(generador, INPUT); // Pin del generador configurado como entrada analógica
-
-  // Inicialización del LCD y del puerto serial
-  lcd_1.begin(16, 2);        // LCD con 16 columnas y 2 filas usando I2C
-  Serial.begin(9600);        // Inicia la comunicación serial para depuración
+  // Inicializaciones
+  pinMode(boton_1, INPUT);   // Configura el GPIO del botón 1 como entrada
+  pinMode(boton_2, INPUT);   // Configura el GPIO del botón 2 como entrada
+  pinMode(generador, INPUT); // Configura el GPIO del generador como entrada
   
-  // Mensaje inicial en el LCD
+  lcd_1.begin(16, 2);  // Inicia el LCD con 16 columnas y 2 filas  
+  Serial.begin(9600);  // Inicia la comunicación serial
+  
   lcd_1.print("Desafio_1");
-
-  // Reserva memoria dinámica para almacenar los voltajes
-  voltajes = new float[capacidad];
 }
 
 void loop() {
@@ -48,87 +48,108 @@ void loop() {
   estado_boton_1 = digitalRead(boton_1);  
   estado_boton_2 = digitalRead(boton_2);
 
-  // Si el botón 1 está presionado, se inicia la captura de datos
-  if (estado_boton_1 == HIGH) {
-    lcd_1.clear();
-    lcd_1.print("Tomando Datos");
-    bandera_boton_1 = true;  // Activa la toma de datos
-    contador = 0;            // Reinicia el contador de muestras
-    capacidad = 10;          // Reinicia la capacidad del arreglo
-    minimo = 5;              // Reinicia el valor mínimo
-    maximo = 0;              // Reinicia el valor máximo
-    
-    // Libera la memoria actual y reserva un nuevo arreglo
-    delete[] voltajes;
-    voltajes = new float[capacidad];
-  }
-
-  // Si la bandera del botón 1 está activa, se toma la señal del generador
-  while (bandera_boton_1) {
-    
-    // Lee el valor del generador (señal analógica en A0)
-    valor_generador = analogRead(generador);
-    
-    // Convierte el valor analógico a voltaje
-    voltaje = (valor_generador / 1023.0) * 5.0;
-    
-    // Imprime el valor de voltaje en el monitor serial para depuración
-    Serial.println(voltaje);
-
-    // Si se excede la capacidad del arreglo, se redimensiona
-    if (contador >= capacidad) {
-      capacidad *= 2;  // Duplica la capacidad del arreglo
-      float* nuevo_voltajes = new float[capacidad];  // Reserva nuevo arreglo
-
-      // Copia los valores antiguos al nuevo arreglo
-      for (int i = 0; i < contador; i++) {
-        nuevo_voltajes[i] = voltajes[i];
-      }
-
-      // Libera la memoria antigua y actualiza el puntero
-      delete[] voltajes;
-      voltajes = nuevo_voltajes;
-    }
-
-    // Almacena el voltaje en el arreglo
-    voltajes[contador] = voltaje;
-    contador++;
-
-    // Si el botón 2 se presiona, finaliza la toma de datos
-    estado_boton_2 = digitalRead(boton_2);
-    if (estado_boton_2 == HIGH) {
-      bandera_boton_1 = false;  // Detiene la toma de datos
-      bandera_boton_2 = true;   // Activa el proceso de análisis
-    }
-
-    delay(100);  // Pequeña demora para evitar lecturas demasiado rápidas
-  }
-  
-  // Si el botón 2 ha sido presionado, se calcula la amplitud
-  if (bandera_boton_2) {
-        
-    // Recorre el arreglo de voltajes para encontrar el mínimo y el máximo
-    for (int i = 0; i < contador; i++) {
-      if (voltajes[i] > maximo) {
-        maximo = voltajes[i];
-      }
-      if (voltajes[i] < minimo) {
-        minimo = voltajes[i];
-      }      
-    }
-    
-    // Calcula la amplitud de la señal
-    amplitud = maximo - minimo;
-    
-    // Muestra la amplitud en el LCD
+  if(captura_nueva){
     lcd_1.clear();
     lcd_1.setCursor(0, 0);
-    lcd_1.print("AMP:");
-    lcd_1.setCursor(4, 0);
-    lcd_1.print(amplitud, 2);
+    lcd_1.print("Presione boton 1");
+    lcd_1.setCursor(0, 1);
+    lcd_1.print("para capturar");
+    while(!(digitalRead(boton_1))){
 
-    // Desactiva la bandera del botón 2 después de mostrar el resultado
-    bandera_boton_2 = false;
-    delay(100);
+    }
+
+  }
+  
+  // Si el botón 1 está presionado, activa la bandera y reinicia los valores de calibración
+  if (estado_boton_1 == HIGH) {
+    bandera_boton_1 = true;
+    valorMinimo = 5000.0;
+    valorMaximo = -5000.0;
+    lcd_1.clear();
+    lcd_1.setCursor(0, 0);
+    lcd_1.print("Capturando");
+    lcd_1.setCursor(7, 1);
+    lcd_1.print("datos...");
+  }
+
+  // Si el botón 2 está presionado, activa la bandera
+  if (estado_boton_2 == HIGH) {
+    bandera_boton_2 = true;
+  }
+
+  // Calibración y medición si el botón 1 está activo
+  if (bandera_boton_1) {
+    unsigned long inicioCalibracion = millis();
+    // Calibración inicial para determinar los valores mínimo y máximo de la señal
+    while (millis() - inicioCalibracion < tiempoCalibracion) {
+      int valorActual = analogRead(generador);
+      if (valorActual > valorMaximo) {
+        valorMaximo = valorActual;
+      }
+      if (valorActual < valorMinimo) {
+        valorMinimo = valorActual;
+      }
+    }
+    
+    amplitud = ((valorMaximo - valorMinimo) / 1023) * 5;
+    valorMedio = (valorMaximo + valorMinimo) / 2;
+    calibrado = true;  // Indicar que la calibración ha terminado
+  
+    while (bandera_boton_1) {
+      int valorActual = analogRead(generador);  // Leer el valor analógico de la señal
+      // Detectar cruce ascendente con histéresis para evitar ruido
+      if (valorActual >= valorMedio + histeresis && !cruceDetectado) {
+        if (tiempoInicio == 0) {
+          // Si es el primer cruce, iniciar el conteo de tiempo
+          tiempoInicio = micros();
+        } else {
+          // Si es el segundo cruce, calcular el período
+          tiempoFin = micros();
+          periodo = tiempoFin - tiempoInicio;
+          frecuencia = 1000000.0 / periodo;  // Calcular la frecuencia en Hz
+          tiempoInicio = tiempoFin;          // Reiniciar el tiempo para el siguiente ciclo
+        }
+        cruceDetectado = true;  // Marcar que se ha detectado un cruce ascendente
+      }
+      // Permitir detectar el siguiente cruce cuando la señal caiga por debajo del valor medio menos la histéresis
+      if (valorActual < valorMedio - histeresis) {
+        cruceDetectado = false;
+      }
+      
+      
+      estado_boton_2 = digitalRead(boton_2);
+      if (estado_boton_2 == HIGH) {
+        bandera_boton_1 = false;
+        bandera_boton_2 = true;
+      }
+    }
+  }
+
+  // Mostrar resultados en el LCD si el botón 2 está activo
+  if (bandera_boton_2) {
+    // Display
+    lcd_1.clear();
+    lcd_1.setCursor(0, 0);
+    lcd_1.print("Ampli:");
+    lcd_1.setCursor(7, 0);
+    lcd_1.print(amplitud, 1);
+    lcd_1.setCursor(14, 0);
+    lcd_1.print("V");
+    lcd_1.setCursor(0, 1);
+    lcd_1.print("Frecu:");
+    lcd_1.setCursor(7, 1);  // Corregido para imprimir en la fila correcta
+    lcd_1.print(frecuencia, 1);
+    lcd_1.setCursor(14, 1);
+    lcd_1.print("Hz");
+
+    while (bandera_boton_2) {
+      estado_boton_1 = digitalRead(boton_1);
+      if (estado_boton_1 == HIGH) {
+        bandera_boton_2 = false;
+        captura_nueva = true;
+      }
+    }
+
+    //delay(500);
   }
 }
