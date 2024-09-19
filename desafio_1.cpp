@@ -26,7 +26,7 @@ unsigned long tiempoInicio = 0;  // Almacena el tiempo del primer cruce por cero
 unsigned long tiempoFin = 0;     // Almacena el tiempo del segundo cruce por cero
 unsigned long periodo = 0;       // Almacena el período de la señal en microsegundos
 int tiempoCalibracion = 1000;    // Tiempo de calibración (en milisegundos)
-unsigned long t = 0;             // Variable auxiliar para gestionar el tiempo actual
+unsigned long t_final = 0;             // Variable auxiliar para gestionar el tiempo actual
 
 // Variables para la frecuencia
 int valorMedio = 0;              // Valor medio de la señal para detectar cruces de cero
@@ -103,7 +103,7 @@ void almacenarValor() {
       delete[] arreglo;       // Libera la memoria del arreglo anterior
       arreglo = temp;         // Actualiza el puntero al nuevo arreglo
     }
-    arreglo[contador] = valorActual; // Almacena el nuevo valor en el arreglo
+    *(arreglo + contador) = valorActual; // Almacena el nuevo valor usando aritmética de puntero
     contador++;                      // Incrementa el contador de elementos almacenados
   }
 }
@@ -162,7 +162,8 @@ void loop() {
     
     // Calibración para encontrar los valores mínimo y máximo de la señal
     while (millis() - inicioCalibracion < tiempoCalibracion) {
-      valorActual = analogRead(generador);  // Lee el valor de la señal en el pin analógico
+      
+      valorActual = analogRead(generador);// Lee el valor de la señal en el pin analógico
       if (valorActual > valorMaximo) {
         valorMaximo = valorActual;          // Actualiza el valor máximo si la lectura es mayor
       }
@@ -182,10 +183,10 @@ void loop() {
       
       // Si se detecta una frecuencia, almacenar datos con un intervalo basado en la frecuencia
       if(detecto_fre) {
-        unsigned long il = micros();  // Almacena el tiempo actual en microsegundos
+        unsigned long tiempo_i = micros();  // Almacena el tiempo actual en microsegundos
         // Si ha pasado el tiempo suficiente basado en la frecuencia, almacenar valor
-        if(il - t >= (10000/frecuencia)) {
-          t = il;  // Actualiza el tiempo para el próximo almacenamiento
+        if(tiempo_i - t_final >= (10000/frecuencia)) {
+           t_final = tiempo_i;  // Actualiza el tiempo para el próximo almacenamiento
           almacenarValor();  // Almacena el valor actual en el arreglo dinámico
         }
       }
